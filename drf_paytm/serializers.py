@@ -4,6 +4,7 @@ They also map regular model field name to PayTM based keys.
 
 Author: Himanshu Shankar (https://himanshus.com)
 """
+
 from rest_framework import serializers
 
 from django.utils.text import gettext_lazy as _
@@ -177,6 +178,28 @@ class TransactionResponseSerializer(serializers.ModelSerializer):
                                                 "not exists in the system."))
         return value
 
+    def validate_TXNID(self, value):
+        """
+        Checks if provided response already exists in the system.
+
+        Parameters
+        ----------
+        value: str | Transaction ID
+
+        Returns
+        -------
+        str: Transaction ID
+
+        Author: Himanshu Shankar (https://himanshus.com)
+        """
+        from .models import TransactionResponse
+
+        if TransactionResponse.objects.filter(tid=value).count() > 0:
+            raise serializers.ValidationError(_("Provided Transaction "
+                                                "Response already exists in "
+                                                "the system."))
+        return value
+
     def validate_ORDERID(self, value):
         """
         Checks if Order ID is present in system.
@@ -222,21 +245,31 @@ class TransactionResponseSerializer(serializers.ModelSerializer):
 
         from .utils import verify_checksum
         from .models import PayTMConfiguration, TransactionRequest
+        from .paytmapi import validate_transaction_status
 
         try:
-            pc = PayTMConfiguration.objects.get(mid=attrs.get('MID'))
+            pc = PayTMConfiguration.objects.get(mid=attrs.get('mid'))
         except PayTMConfiguration.DoesNotExist:
-            pc = None
-            # raise serializers.ValidationError(_("Provided merchant ID does "
-            #                                     "not exists in the system."))
+            raise serializers.ValidationError(_("Provided merchant ID does "
+                                                "not exists in the system."))
         else:
-            if not verify_checksum(param_dict=attrs, merchant_key=pc.mkey,
-                                   checksum=attrs.get('CHECKSUMHASH')):
+            param_dict = dict(self.initial_data)
+            param_dict = {key: value[0] for key, value in param_dict.items()}
+            if not verify_checksum(
+                    param_dict=dict(param_dict),
+                    merchant_key=pc.mkey, checksum=attrs.get('checksum')):
                 raise serializers.ValidationError(_("Could not verify "
                                                     "transaction response."))
         attrs['raw_response'] = json.dumps(self.context.get('request').data)
         attrs['t_request'] = TransactionRequest.objects.get(oid=
                                                             attrs.get('oid'))
+
+        if not validate_transaction_status(orderid=attrs.get('oid'),
+                                           status=attrs.get("status"),
+                                           txnid=attrs.get("tid", "")):
+            raise serializers.ValidationError(_("Could not verify "
+                                                "transaction."))
+
         return attrs
 
     class Meta:
@@ -247,3 +280,119 @@ class TransactionResponseSerializer(serializers.ModelSerializer):
                   'TXNAMOUNT', 'CURRENCY', 'STATUS', 'RESPCODE', 'RESPMSG',
                   'TXNDATE', 'GATEWAYNAME', 'BANKNAME', 'PAYMENTMODE',
                   'CHECKSUMHASH', 'BIN_NUMBER', 'CARD_LAST_NUMS')
+
+
+class TransactionStatusSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Transaction Status API.
+    Effectively maps regular model fields to PayTM based keys.
+
+    Author: Himanshu Shankar (https://himanshus.com)
+    """
+
+    from .variables import STATUS_CHOICES
+
+    MID = serializers.CharField(source='mid')
+    TXNID = serializers.CharField(source='tid', required=False)
+    ORDERID = serializers.CharField(source='oid')
+    CUST_ID = serializers.CharField(source='cid', required=False)
+    BANKTXNID = serializers.CharField(source='bnkid', allow_blank=True)
+    TXNAMOUNT = serializers.CharField(source='amount')
+    CURRENCY = serializers.CharField(source='currency', default='INR')
+    STATUS = serializers.ChoiceField(source='status', choices=STATUS_CHOICES)
+    RESPCODE = serializers.CharField(source='code')
+    RESPMSG = serializers.CharField(source='message')
+    TXNDATE = serializers.CharField(source='timestamp', required=False)
+    GATEWAYNAME = serializers.CharField(source='gateway', required=False)
+    BANKNAME = serializers.CharField(source='bank', required=False)
+    PAYMENTMODE = serializers.CharField(source='mode', required=False)
+    BIN_NUMBER = serializers.CharField(source='bin_number', required=False)
+    CARD_LAST_NUMS = serializers.CharField(source='card_last_num', required=False)
+
+    def validate_MID(self, value):
+        """
+        Checks if Merchant ID is present in system.
+
+        Parameters
+        ----------
+        value: str | merchant ID
+
+        Returns
+        -------
+        str: merchant ID
+
+        Author: Himanshu Shankar (https://himanshus.com)
+        """
+
+        from .models import PayTMConfiguration
+
+        try:
+            PayTMConfiguration.objects.get(mid=value)
+        except PayTMConfiguration.DoesNotExist:
+            raise serializers.ValidationError(_("Provided Merchant ID does "
+                                                "not exists in the system."))
+        return value
+
+    def validate_ORDERID(self, value):
+        """
+        Checks if Order ID is present in system.
+
+        Parameters
+        ----------
+        value: str | order ID
+
+        Returns
+        -------
+        str: order ID
+
+        Author: Himanshu Shankar (https://himanshus.com)
+        """
+
+        from .models import TransactionRequest
+
+        try:
+            TransactionRequest.objects.get(oid=value)
+        except TransactionRequest.DoesNotExist:
+            raise serializers.ValidationError(_("No PayTM Transaction "
+                                                "request with provided order "
+                                                "ID exists in the system."))
+        return value
+
+    def validate(self, attrs):
+        """
+        Adds raw_response and t_request to the attributes.
+
+        Parameters
+        ----------
+        attrs: dict | attributes
+
+        Returns
+        -------
+        dict: attributes
+
+        Author: Himanshu Shankar (https://himanshus.com)
+        """
+
+        import json
+
+        from .models import TransactionRequest
+
+        attrs['raw_response'] = json.dumps(self.context.get('request').data)
+        attrs['t_request'] = TransactionRequest.objects.get(oid=
+                                                            attrs.get('oid'))
+
+        return attrs
+
+    def save(self, **kwargs):
+        from rest_framework.exceptions import PermissionDenied
+
+        raise PermissionDenied(_("Save not allowed on Status Serializer."))
+
+    class Meta:
+        from .models import TransactionResponse
+
+        model = TransactionResponse
+        fields = ('id', 'MID', 'TXNID', 'ORDERID', 'CUST_ID', 'BANKTXNID',
+                  'TXNAMOUNT', 'CURRENCY', 'STATUS', 'RESPCODE', 'RESPMSG',
+                  'TXNDATE', 'GATEWAYNAME', 'BANKNAME', 'PAYMENTMODE',
+                  'BIN_NUMBER', 'CARD_LAST_NUMS')

@@ -59,6 +59,7 @@ class PayTMConfiguration(CreateUpdateModel):
 
         Author: Himanshu Shankar (https://himanshus.com)
         """
+
         from django.core.exceptions import ValidationError
 
         if 'is_active' not in exclude:
@@ -170,6 +171,8 @@ class TransactionRequest(CreateUpdateModel):
     def save(self, force_insert=False, force_update=False, using=None,
              update_fields=None):
         from .utils import generate_checksum
+
+        # Prepare parameters to generate checksum
         parameters = {
             'MID': str(self.mid),
             'INDUSTRY_TYPE_ID': str(self.itid),
@@ -180,18 +183,27 @@ class TransactionRequest(CreateUpdateModel):
             'CUST_ID': str(self.created_by.id),
             'CALLBACK_URL': str(self.callback_url)
         }
+
+        # Add optional parameters
         if self.mobile:
             parameters['MOBILE_NO'] = str(self.mobile)
+
+
         if self.email:
             parameters['EMAIL'] = str(self.email)
+
         if self.payment_mode_only:
             parameters['PAYMENT_MODE_ONLY'] = str(self.payment_mode_only)
             parameters['AUTH_MODE'] = str(self.auth_mode)
             parameters['PAYMENT_TYPE_ID'] = str(self.payment_type_id)
             if self.bank_code:
                 parameters['BANK_CODE'] = str(self.bank_code)
+
+        # Generate checksum
         self.checksum = generate_checksum(param_dict=parameters,
                                           merchant_key=self.mkey)
+
+        # Call super to save object
         super(TransactionRequest, self).save(force_insert=force_insert,
                                              force_update=force_update,
                                              using=using,
