@@ -172,6 +172,9 @@ class TransactionRequest(CreateUpdateModel):
              update_fields=None):
         from .utils import generate_checksum
 
+        from django.urls import reverse
+
+        print(reverse(viewname='list-add-transaction-response'))
         # Prepare parameters to generate checksum
         parameters = {
             'MID': str(self.mid),
@@ -181,13 +184,12 @@ class TransactionRequest(CreateUpdateModel):
             'TXN_AMOUNT': str(round(self.amount, 2)),
             'CHANNEL_ID': str(self.channel),
             'CUST_ID': str(self.created_by.id),
-            'CALLBACK_URL': str(self.callback_url)
+            'CALLBACK_URL': reverse(viewname='list-add-transaction-response')
         }
 
         # Add optional parameters
         if self.mobile:
             parameters['MOBILE_NO'] = str(self.mobile)
-
 
         if self.email:
             parameters['EMAIL'] = str(self.email)

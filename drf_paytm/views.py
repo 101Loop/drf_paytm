@@ -39,9 +39,12 @@ class ListAddTransactionResponseView(ListCreateAPIView):
 
     Author: Himanshu Shankar (https://himanshus.com)
     """
+    from rest_framework.parsers import FormParser
+
     from .serializers import TransactionResponseSerializer
     from .models import TransactionResponse
 
+    parser_classes = (FormParser, )
     serializer_class = TransactionResponseSerializer
     queryset = TransactionResponse.objects.all()
 

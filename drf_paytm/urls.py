@@ -9,9 +9,9 @@ app_name = "drf_paytm"
 
 urlpatterns = [
     path('request/', ListAddTransactionRequestView.as_view(),
-         name="List Add Transaction Request"),
+         name="list-add-transaction-request"),
     path('response/', ListAddTransactionResponseView.as_view(),
-         name="List-Add-Transaction-Response"),
+         name="list-add-transaction-response"),
     path('now/', PayNowTransaction.as_view(),
-         name="Pay Now")
+         name="pay-now")
 ]
