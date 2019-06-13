@@ -75,7 +75,6 @@ def validate_key(value):
 
 
 def generate_checksum(param_dict, merchant_key, salt=None):
-    print(param_dict)
     params_string = __get_param_string__(param_dict)
     salt = salt if salt else __id_generator__(4)
     final_string = '%s|%s' % (params_string, salt)

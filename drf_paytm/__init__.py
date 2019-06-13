@@ -5,7 +5,7 @@ REST APIs for interacting with PayTM.
 name = "drf_paytm"
 
 __title__ = 'PayTM | Django REST Framework'
-__version__ = '0.0.2'
+__version__ = '0.0.3'
 __author__ = '101Loop'
 __license__ = 'GPLv3'
 

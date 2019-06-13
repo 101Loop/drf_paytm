@@ -38,6 +38,8 @@ class PayTMConfiguration(CreateUpdateModel):
                                          "hant-status/getTxnStatus")
     company_name = models.CharField(verbose_name=_("Company Name"),
                                     max_length=254)
+    base_url = models.URLField(verbose_name=_("Base URL (without / at end)"),
+                               default="http://127.0.0.1:8000")
 
     def __str__(self):
         return self.mid
@@ -96,14 +98,16 @@ class TransactionRequest(CreateUpdateModel):
     from .variables import CHANNEL_CHOICES, MODE_CHOICES, AUTH_MODE_CHOICES
 
     mid = models.CharField(verbose_name=_("Merchant ID"), max_length=20)
-    itid = models.CharField(verbose_name=_("Industry Type ID"), max_length=20)
+    itid = models.CharField(verbose_name=_("Industry Type ID"), max_length=20,
+                            default='Retail')
     oid = models.CharField(verbose_name=_("Order ID"), max_length=50,
                            unique=True, validators=[validate_order_id])
-    website = models.CharField(verbose_name=_("Website"), max_length=30)
+    website = models.CharField(verbose_name=_("Website"), max_length=30,
+                               default='WEBSTAGING')
     amount = models.DecimalField(verbose_name=_("Amount"), max_digits=15,
                                  decimal_places=3)
     channel = models.CharField(verbose_name=_("Channel"), max_length=3,
-                               choices=CHANNEL_CHOICES)
+                               choices=CHANNEL_CHOICES, default='WEB')
     checksum = models.CharField(verbose_name=_("Checksum"), max_length=108)
     mobile = models.CharField(verbose_name=_("Customer's Mobile Number"),
                               max_length=15, null=True, blank=True)
@@ -135,6 +139,20 @@ class TransactionRequest(CreateUpdateModel):
                                              "= Yes PAYMENT_TYPE_ID = NB "))
     mkey = models.CharField(verbose_name=_("Merchant Key"),
                             validators=[validate_key], max_length=32)
+
+    @property
+    def paytm_callback_url(self):
+        from django.urls import reverse
+
+        return (PayTMConfiguration.objects.get(mkey=self.mkey).base_url +
+                reverse('drf_paytm:list-add-transaction-response'))
+
+    @property
+    def last_payment_status(self):
+        lp = TransactionResponse.objects.filter(oid=self.oid).last()
+        if lp:
+            return lp.get_status_display()
+        return 'No Payment Transaction'
 
     @property
     def cid(self):
@@ -172,6 +190,7 @@ class TransactionRequest(CreateUpdateModel):
              update_fields=None):
         from .utils import generate_checksum
 
+        self.callback_url = self.callback_url + "?OID=" + str(self.oid)
         # Prepare parameters to generate checksum
         parameters = {
             'MID': str(self.mid),
@@ -181,13 +200,12 @@ class TransactionRequest(CreateUpdateModel):
             'TXN_AMOUNT': str(round(self.amount, 2)),
             'CHANNEL_ID': str(self.channel),
             'CUST_ID': str(self.created_by.id),
-            'CALLBACK_URL': str(self.callback_url)
+            'CALLBACK_URL': str(self.paytm_callback_url)
         }
 
         # Add optional parameters
         if self.mobile:
             parameters['MOBILE_NO'] = str(self.mobile)
-
 
         if self.email:
             parameters['EMAIL'] = str(self.email)
@@ -253,7 +271,7 @@ class TransactionResponse(models.Model):
     mode = models.CharField(verbose_name=_("Mode of Payment"), max_length=15,
                             choices=MODE_CHOICES, null=True, blank=True)
     checksum = models.CharField(verbose_name=_("Checksum Hash"),
-                                max_length=108)
+                                max_length=108, null=True, blank=True)
     bin_number = models.CharField(
         verbose_name=_("Starting 6 Digit Number of Card"), max_length=6,
         null=True, blank=True)
